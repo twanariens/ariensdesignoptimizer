@@ -25,9 +25,16 @@ jobs:
           username: twanariens
           password: ${{ secrets.GHCR_PAT }}
 
+      - name: Extract tag version (for releases)
+        id: extract_version
+        run: |
+          echo "tag=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: ghcr.io/twanariens/ariensdesignoptimizer:latest
+          tags: |
+            ghcr.io/twanariens/ariensdesignoptimizer:latest
+            ${{ github.event_name == 'release' && format('ghcr.io/twanariens/ariensdesignoptimizer:{0}', steps.extract_version.outputs.tag) || '' }}
