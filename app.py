@@ -1,17 +1,37 @@
 import os
 import time
+import logging
+import datetime
+import subprocess
+import redis
+
 from flask import Flask, request, jsonify
 from celery import Celery
+from logging.handlers import RotatingFileHandler
 
 API_TOKEN = os.getenv("API_TOKEN", "mijn_geheime_token")
 
 app = Flask(__name__)
 
-# Configure Celery
+# Zorg dat de map bestaat
+os.makedirs("logs", exist_ok=True)
+
+# Logging naar bestand
+handler = RotatingFileHandler("logs/worker.log", maxBytes=1000000, backupCount=5)
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+app.logger.addHandler(handler)
+app.logger.setLevel(logging.INFO)
+
+# Celery configuratie
 CELERY_BROKER = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
 CELERY_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 
 celery = Celery(app.name, broker=CELERY_BROKER, backend=CELERY_BACKEND)
+
+# Redis voor statistieken
+redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
 
 @celery.task(bind=True, max_retries=3)
 def optimize_image(self, file_path):
@@ -31,12 +51,37 @@ def optimize_image(self, file_path):
             result['webp'] = webp_path
 
         app.logger.info(f"✔️ Optimalisatie gelukt voor: {file_path}")
+
+        # Site-ID + Redis-statistieken
+        site_id = self.request.headers.get('X-Site-ID', 'unknown')
+        key = f"site:{site_id}:stats"
+        now = datetime.datetime.utcnow().isoformat()
+
+        redis_client.hincrby(key, "total", 1)
+        redis_client.hincrby(key, "success", 1)
+        redis_client.lpush(f"{key}:types", list(result.keys())[0])
+        redis_client.lpush(f"{key}:timestamps", now)
+        redis_client.ltrim(f"{key}:types", 0, 9)
+        redis_client.ltrim(f"{key}:timestamps", 0, 9)
+
         return { "file": file_path, "result": result }
 
     except subprocess.CalledProcessError as e:
         app.logger.error(f"❌ Fout bij optimalisatie: {e}")
+
+        site_id = self.request.headers.get('X-Site-ID', 'unknown')
+        key = f"site:{site_id}:stats"
+        now = datetime.datetime.utcnow().isoformat()
+
+        redis_client.hincrby(key, "total", 1)
+        redis_client.hincrby(key, "failed", 1)
+        redis_client.lpush(f"{key}:types", "failed")
+        redis_client.lpush(f"{key}:timestamps", now)
+        redis_client.ltrim(f"{key}:types", 0, 9)
+        redis_client.ltrim(f"{key}:timestamps", 0, 9)
+
         raise self.retry(exc=e, countdown=5)
-        
+
 @app.route('/optimize', methods=['POST'])
 def optimize():
     if request.headers.get('Authorization') != API_TOKEN:
@@ -62,3 +107,25 @@ def task_status(task_id):
         return jsonify({"status": "failed", "error": str(task.info)})
     else:
         return jsonify({"status": task.state})
+
+@app.route('/stats', methods=['GET'])
+def stats():
+    if request.headers.get('Authorization') != API_TOKEN:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    site_id = request.headers.get('X-Site-ID')
+    if not site_id:
+        return jsonify({"error": "Missing Site ID"}), 400
+
+    key = f"site:{site_id}:stats"
+    stats = redis_client.hgetall(key)
+    types = redis_client.lrange(f"{key}:types", 0, 9)
+    timestamps = redis_client.lrange(f"{key}:timestamps", 0, 9)
+
+    return jsonify({
+        "total_tasks": int(stats.get("total", 0)),
+        "success": int(stats.get("success", 0)),
+        "failed": int(stats.get("failed", 0)),
+        "last_10_types": types,
+        "last_10_timestamps": timestamps
+    })

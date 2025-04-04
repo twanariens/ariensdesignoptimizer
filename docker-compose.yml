@@ -13,6 +13,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - ./app:/app
+      - ./logs:/app/logs
     networks:
       - proxy
     depends_on:
@@ -29,10 +30,11 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - ./app:/app
-    depends_on:
-      - redis
+      - ./logs:/app/logs
     networks:
       - proxy
+    depends_on:
+      - redis
 
   redis:
     image: redis:7
