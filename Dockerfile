@@ -29,5 +29,12 @@ RUN apt-get update && apt-get install -y \
     pngquant \
  && rm -rf /var/lib/apt/lists/*
 
+#Extra information for certain OS
+LABEL org.opencontainers.image.title="Ariens Design Optimizer" \
+      org.opencontainers.image.description="Automatische beeldoptimalisatie via Flask API" \
+      org.opencontainers.image.source="https://github.com/twanariens/ariensdesignoptimizer"
+ARG VERSION
+LABEL org.opencontainers.image.version="${VERSION}"
+
 # Start the app
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
