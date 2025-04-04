@@ -20,30 +20,33 @@ jobs:
         run: |
           git fetch --tags
 
-      - name: Generate version from git
+      - name: Determine next free version
         id: version
         run: |
-          version=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
-          if [[ "$version" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            major=${BASH_REMATCH[1]}
-            minor=${BASH_REMATCH[2]}
-            patch=${BASH_REMATCH[3]}
-            new_version="v$major.$minor.$((patch+1))"
-          else
-            new_version="v1.0.0"
-          fi
-          echo "version=$new_version" >> $GITHUB_OUTPUT
-          echo "::notice::New version will be $new_version"
+          git fetch --tags
+
+          major=1
+          minor=0
+          patch=1
+
+          while git rev-parse "v${major}.${minor}.${patch}" >/dev/null 2>&1; do
+            patch=$((patch+1))
+          done
+
+          version="v${major}.${minor}.${patch}"
+          echo "Next free version: $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to GHCR
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
