@@ -5,20 +5,39 @@ services:
     image: ghcr.io/twanariens/ariensdesignoptimizer:latest
     container_name: adoptimizer
     restart: unless-stopped
-
-    # ✅ Publiceer poort 5000 naar de buitenwereld
     ports:
       - "5000:5000"
-
-    # ✅ (Optioneel) Zet je token in een ENV variabele
     environment:
       - API_TOKEN=eK7Mtf_FU0bCi4SnUPzIZayNymnuzqtOT2oKt9LNj-Y
-
-    # ✅ Zorg dat bestanden/app.py bereikbaar zijn als nodig
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - ./app:/app
+    networks:
+      - proxy
+    depends_on:
+      - redis
 
-    # ✅ Netwerkinstellingen
+  worker:
+    image: ghcr.io/twanariens/ariensdesignoptimizer:latest
+    container_name: adoptimizer-worker
+    restart: unless-stopped
+    command: celery -A app.celery worker --loglevel=info
+    environment:
+      - API_TOKEN=eK7Mtf_FU0bCi4SnUPzIZayNymnuzqtOT2oKt9LNj-Y
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./app:/app
+    depends_on:
+      - redis
+    networks:
+      - proxy
+
+  redis:
+    image: redis:7
+    container_name: adoptimizer-redis
+    restart: unless-stopped
     networks:
       - proxy
 
