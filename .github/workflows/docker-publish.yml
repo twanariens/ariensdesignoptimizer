@@ -1,34 +1,54 @@
-name: Publish Docker image to GHCR
+name: Auto-build & release Docker image to GHCR
 
 on:
   push:
     branches: [master]
-  release:
-    types: [published]
 
 jobs:
-  build-and-push:
+  version-release-build:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Log in to GitHub Container Registry using PAT
+      - name: Set up Git
+        run: |
+          git fetch --tags
+
+      - name: Generate version from git
+        id: version
+        run: |
+          version=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+          if [[ "$version" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            major=${BASH_REMATCH[1]}
+            minor=${BASH_REMATCH[2]}
+            patch=${BASH_REMATCH[3]}
+            new_version="v$major.$minor.$((patch+1))"
+          else
+            new_version="v1.0.0"
+          fi
+          echo "version=$new_version" >> $GITHUB_OUTPUT
+          echo "::notice::New version will be $new_version"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to GHCR
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
-          username: twanariens
+          username: ${{ github.actor }}
           password: ${{ secrets.GHCR_PAT }}
-
-      - name: Extract tag version (for releases)
-        id: extract_version
-        run: |
-          echo "tag=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
@@ -37,4 +57,4 @@ jobs:
           push: true
           tags: |
             ghcr.io/twanariens/ariensdesignoptimizer:latest
-            ${{ github.event_name == 'release' && format('ghcr.io/twanariens/ariensdesignoptimizer:{0}', steps.extract_version.outputs.tag) || '' }}
+            ghcr.io/twanariens/ariensdesignoptimizer:${{ steps.version.outputs.version }}
