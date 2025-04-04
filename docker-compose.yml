@@ -1,9 +1,27 @@
-version: '3'
+version: '3.8'
+
 services:
   optimizer:
-    build: .
+    image: ghcr.io/twanariens/ariensdesignoptimizer:latest
+    container_name: adoptimizer
+    restart: unless-stopped
+
+    # ✅ Publiceer poort 5000 naar de buitenwereld
     ports:
       - "5000:5000"
+
+    # ✅ (Optioneel) Zet je token in een ENV variabele
+    environment:
+      - API_TOKEN=eK7Mtf_FU0bCi4SnUPzIZayNymnuzqtOT2oKt9LNj-Y
+
+    # ✅ Zorg dat bestanden/app.py bereikbaar zijn als nodig
     volumes:
-      - /mnt/user/appdata/afbeelding-optimizer:/app
-    restart: unless-stopped
+      - ./app:/app
+
+    # ✅ Netwerkinstellingen
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    driver: bridge
