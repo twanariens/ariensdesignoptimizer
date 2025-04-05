@@ -9,15 +9,15 @@ services:
       - "5000:5000"
     environment:
       - API_TOKEN=eK7Mtf_FU0bCi4SnUPzIZayNymnuzqtOT2oKt9LNj-Y
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_HOST=${REDIS_HOST:-Redis}  # Gebruik de env variabele voor de Redis host
+      - REDIS_PORT=${REDIS_PORT:-6379}  # Gebruik de env variabele voor de Redis poort
+      - CELERY_BROKER_URL=redis://${REDIS_HOST}:${REDIS_PORT}/0
+      - CELERY_RESULT_BACKEND=redis://${REDIS_HOST}:${REDIS_PORT}/0
     volumes:
       - ./app:/app
       - ./logs:/app/logs
     networks:
       - proxy
-    depends_on:
-      - redis
 
   worker:
     image: ghcr.io/twanariens/ariensdesignoptimizer:latest
@@ -26,19 +26,19 @@ services:
     command: celery -A app.celery worker --loglevel=info
     environment:
       - API_TOKEN=eK7Mtf_FU0bCi4SnUPzIZayNymnuzqtOT2oKt9LNj-Y
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_HOST=${REDIS_HOST:-Redis}  # Gebruik de env variabele voor de Redis host
+      - REDIS_PORT=${REDIS_PORT:-6379}  # Gebruik de env variabele voor de Redis poort
+      - CELERY_BROKER_URL=redis://${REDIS_HOST}:${REDIS_PORT}/0
+      - CELERY_RESULT_BACKEND=redis://${REDIS_HOST}:${REDIS_PORT}/0
     volumes:
       - ./app:/app
       - ./logs:/app/logs
     networks:
       - proxy
-    depends_on:
-      - redis
 
-  redis:
+  Redis:
     image: redis:7
-    container_name: adoptimizer-redis
+    container_name: ${REDIS_CONTAINER_NAME:-Redis}  # Gebruik de env variabele voor containernaam
     restart: unless-stopped
     networks:
       - proxy
