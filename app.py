@@ -52,7 +52,7 @@ celery = Celery(app.name, broker=CELERY_BROKER, backend=CELERY_BACKEND)
 
 # Celery taak om afbeeldingen te optimaliseren
 @celery.task(bind=True, max_retries=3)
-def optimize_image(self, file_path):
+def optimize_image(self, file_path, site_id):  # Voeg site_id als argument toe
     try:
         app.logger.debug("Test logbericht: Celery taak gestart.")
         ext = os.path.splitext(file_path)[1].lower()
@@ -71,11 +71,9 @@ def optimize_image(self, file_path):
 
         app.logger.info(f"✔️ Optimalisatie gelukt voor: {file_path}")
 
-        site_id = self.request.headers.get('X-Site-ID', 'unknown')
         key = f"site:{site_id}:stats"
         now = datetime.datetime.utcnow().isoformat()
 
-        # Update Redis statistieken
         redis_client.hincrby(key, "total", 1)  # Verhoogt het totaal aantal taken
         redis_client.hincrby(key, "success", 1)  # Verhoogt het aantal succesvolle optimalisaties
         redis_client.lpush(f"{key}:types", list(result.keys())[0])  # Voeg het type toe
@@ -83,19 +81,14 @@ def optimize_image(self, file_path):
         redis_client.ltrim(f"{key}:types", 0, 9)  # Beperk het aantal types tot de laatste 10
         redis_client.ltrim(f"{key}:timestamps", 0, 9)  # Beperk het aantal timestamps tot de laatste 10
 
-        # **Nieuwe logregel toevoegen voor debugging**
-        app.logger.info(f"Gegevens naar Redis gestuurd voor {file_path}: total={redis_client.hget(key, 'total')}, success={redis_client.hget(key, 'success')}")
-
         return { "file": file_path, "result": result }
 
     except subprocess.CalledProcessError as e:
         app.logger.error(f"❌ Fout bij optimalisatie: {e}")
 
-        site_id = self.request.headers.get('X-Site-ID', 'unknown')
         key = f"site:{site_id}:stats"
         now = datetime.datetime.utcnow().isoformat()
 
-        # Update Redis statistieken in geval van een fout
         redis_client.hincrby(key, "total", 1)  # Verhoogt het totaal aantal taken
         redis_client.hincrby(key, "failed", 1)  # Verhoogt het aantal mislukte optimalisaties
         redis_client.lpush(f"{key}:types", "failed")  # Voeg "failed" toe aan types
@@ -113,11 +106,12 @@ def optimize():
 
     data = request.get_json()
     file_path = data.get("file")
+    site_id = request.headers.get('X-Site-ID', 'unknown')  # Haal de site_id uit de headers
 
     if not file_path:
         return jsonify({"error": "Geen bestand opgegeven"}), 400
 
-    task = optimize_image.delay(file_path)
+    task = optimize_image.delay(file_path, site_id)  # Geef site_id door aan Celery taak
     return jsonify({"status": "queued", "task_id": task.id})
 
 # Route om de status van de taak op te vragen
