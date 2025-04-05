@@ -9,17 +9,19 @@ services:
       - "5000:5000"
     environment:
       - API_TOKEN=eK7Mtf_FU0bCi4SnUPzIZayNymnuzqtOT2oKt9LNj-Y
-      - REDIS_HOST=${REDIS_HOST:-Redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - CELERY_BROKER_URL=redis://${REDIS_HOST}:${REDIS_PORT}/0
-      - CELERY_RESULT_BACKEND=redis://${REDIS_HOST}:${REDIS_PORT}/0
+      - REDIS_HOST=Redis
+      - REDIS_PORT=6379
+      - CELERY_BROKER_URL=redis://Redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://Redis:6379/0
     volumes:
       - ./app:/app
       - ./logs:/app/logs
     networks:
       - proxy
     depends_on:
-      - Redis
+      - worker
+    labels:
+      - "net.unraid.docker.managed=dockerman"
 
   worker:
     image: ghcr.io/twanariens/ariensdesignoptimizer:latest
@@ -28,24 +30,17 @@ services:
     command: celery -A app.celery worker --loglevel=info
     environment:
       - API_TOKEN=eK7Mtf_FU0bCi4SnUPzIZayNymnuzqtOT2oKt9LNj-Y
-      - REDIS_HOST=${REDIS_HOST:-Redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - CELERY_BROKER_URL=redis://${REDIS_HOST}:${REDIS_PORT}/0
-      - CELERY_RESULT_BACKEND=redis://${REDIS_HOST}:${REDIS_PORT}/0
+      - REDIS_HOST=Redis
+      - REDIS_PORT=6379
+      - CELERY_BROKER_URL=redis://Redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://Redis:6379/0
     volumes:
       - ./app:/app
       - ./logs:/app/logs
     networks:
       - proxy
-    depends_on:
-      - Redis
-
-  Redis:
-    image: redis:7
-    container_name: ${REDIS_CONTAINER_NAME:-Redis}
-    restart: unless-stopped
-    networks:
-      - proxy
+    labels:
+      - "net.unraid.docker.managed=dockerman"
 
 networks:
   proxy:
