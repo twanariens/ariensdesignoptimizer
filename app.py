@@ -24,16 +24,16 @@ handler.setFormatter(formatter)
 app.logger.addHandler(handler)
 app.logger.setLevel(logging.INFO)
 
-# Celery configuratie
-CELERY_BROKER = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
-CELERY_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
-
-celery = Celery(app.name, broker=CELERY_BROKER, backend=CELERY_BACKEND)
-
 # Redis connectie via variabele
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+
+# Celery configuratie
+CELERY_BROKER = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+CELERY_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+
+celery = Celery(app.name, broker=CELERY_BROKER, backend=CELERY_BACKEND)
 
 @celery.task(bind=True, max_retries=3)
 def optimize_image(self, file_path):
