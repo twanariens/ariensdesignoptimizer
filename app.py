@@ -30,8 +30,10 @@ CELERY_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 
 celery = Celery(app.name, broker=CELERY_BROKER, backend=CELERY_BACKEND)
 
-# Redis voor statistieken
-redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
+# Redis connectie via variabele
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
 @celery.task(bind=True, max_retries=3)
 def optimize_image(self, file_path):
@@ -52,7 +54,6 @@ def optimize_image(self, file_path):
 
         app.logger.info(f"✔️ Optimalisatie gelukt voor: {file_path}")
 
-        # Site-ID + Redis-statistieken
         site_id = self.request.headers.get('X-Site-ID', 'unknown')
         key = f"site:{site_id}:stats"
         now = datetime.datetime.utcnow().isoformat()
