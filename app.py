@@ -4,25 +4,40 @@ import logging
 import datetime
 import subprocess
 import redis
+import sys
 
 from flask import Flask, request, jsonify
 from celery import Celery
 from logging.handlers import RotatingFileHandler
 
+# Haal de API token op uit de omgevingsvariabele (of gebruik de default waarde als de variabele niet is ingesteld)
 API_TOKEN = os.getenv("API_TOKEN", "mijn_geheime_token")
 
+# Maak de app instantie eerst
 app = Flask(__name__)
 
-# Zorg dat de map bestaat
+# Zorg dat de map bestaat voor logs
 os.makedirs("logs", exist_ok=True)
 
-# Logging naar bestand
+# Formatter voor logs
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+# Configureer logging naar stdout
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setLevel(logging.DEBUG)
+stream_handler.setFormatter(formatter)
+
+# Voeg de stream handler toe
+app.logger.addHandler(stream_handler)
+
+# Logging naar bestand (RotatingFileHandler)
 handler = RotatingFileHandler("logs/worker.log", maxBytes=1000000, backupCount=5)
 handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 app.logger.addHandler(handler)
-app.logger.setLevel(logging.INFO)
+
+# Stel het logniveau in op DEBUG
+app.logger.setLevel(logging.DEBUG)
 
 # Redis connectie via variabele
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -35,9 +50,11 @@ CELERY_BACKEND = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 
 celery = Celery(app.name, broker=CELERY_BROKER, backend=CELERY_BACKEND)
 
+# Celery taak om afbeeldingen te optimaliseren
 @celery.task(bind=True, max_retries=3)
 def optimize_image(self, file_path):
     try:
+        app.logger.debug("Test logbericht: Celery taak gestart.")
         ext = os.path.splitext(file_path)[1].lower()
         result = {}
 
@@ -58,6 +75,7 @@ def optimize_image(self, file_path):
         key = f"site:{site_id}:stats"
         now = datetime.datetime.utcnow().isoformat()
 
+        # Update Redis statistieken
         redis_client.hincrby(key, "total", 1)  # Verhoogt het totaal aantal taken
         redis_client.hincrby(key, "success", 1)  # Verhoogt het aantal succesvolle optimalisaties
         redis_client.lpush(f"{key}:types", list(result.keys())[0])  # Voeg het type toe
@@ -77,6 +95,7 @@ def optimize_image(self, file_path):
         key = f"site:{site_id}:stats"
         now = datetime.datetime.utcnow().isoformat()
 
+        # Update Redis statistieken in geval van een fout
         redis_client.hincrby(key, "total", 1)  # Verhoogt het totaal aantal taken
         redis_client.hincrby(key, "failed", 1)  # Verhoogt het aantal mislukte optimalisaties
         redis_client.lpush(f"{key}:types", "failed")  # Voeg "failed" toe aan types
@@ -86,22 +105,7 @@ def optimize_image(self, file_path):
 
         raise self.retry(exc=e, countdown=5)
 
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f"❌ Fout bij optimalisatie: {e}")
-
-        site_id = self.request.headers.get('X-Site-ID', 'unknown')
-        key = f"site:{site_id}:stats"
-        now = datetime.datetime.utcnow().isoformat()
-
-        redis_client.hincrby(key, "total", 1)
-        redis_client.hincrby(key, "failed", 1)
-        redis_client.lpush(f"{key}:types", "failed")
-        redis_client.lpush(f"{key}:timestamps", now)
-        redis_client.ltrim(f"{key}:types", 0, 9)
-        redis_client.ltrim(f"{key}:timestamps", 0, 9)
-
-        raise self.retry(exc=e, countdown=5)
-
+# Route om afbeeldingen te optimaliseren
 @app.route('/optimize', methods=['POST'])
 def optimize():
     if request.headers.get('Authorization') != API_TOKEN:
@@ -116,6 +120,7 @@ def optimize():
     task = optimize_image.delay(file_path)
     return jsonify({"status": "queued", "task_id": task.id})
 
+# Route om de status van de taak op te vragen
 @app.route('/status/<task_id>', methods=['GET'])
 def task_status(task_id):
     task = optimize_image.AsyncResult(task_id)
@@ -128,6 +133,7 @@ def task_status(task_id):
     else:
         return jsonify({"status": task.state})
 
+# Route om de statistieken op te vragen
 @app.route('/stats', methods=['GET'])
 def stats():
     if request.headers.get('Authorization') != API_TOKEN:
