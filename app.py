@@ -58,14 +58,33 @@ def optimize_image(self, file_path):
         key = f"site:{site_id}:stats"
         now = datetime.datetime.utcnow().isoformat()
 
-        redis_client.hincrby(key, "total", 1)
-        redis_client.hincrby(key, "success", 1)
-        redis_client.lpush(f"{key}:types", list(result.keys())[0])
-        redis_client.lpush(f"{key}:timestamps", now)
-        redis_client.ltrim(f"{key}:types", 0, 9)
-        redis_client.ltrim(f"{key}:timestamps", 0, 9)
+        redis_client.hincrby(key, "total", 1)  # Verhoogt het totaal aantal taken
+        redis_client.hincrby(key, "success", 1)  # Verhoogt het aantal succesvolle optimalisaties
+        redis_client.lpush(f"{key}:types", list(result.keys())[0])  # Voeg het type toe
+        redis_client.lpush(f"{key}:timestamps", now)  # Voeg de timestamp toe
+        redis_client.ltrim(f"{key}:types", 0, 9)  # Beperk het aantal types tot de laatste 10
+        redis_client.ltrim(f"{key}:timestamps", 0, 9)  # Beperk het aantal timestamps tot de laatste 10
+
+        # **Nieuwe logregel toevoegen voor debugging**
+        app.logger.info(f"Gegevens naar Redis gestuurd voor {file_path}: total={redis_client.hget(key, 'total')}, success={redis_client.hget(key, 'success')}")
 
         return { "file": file_path, "result": result }
+
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f"❌ Fout bij optimalisatie: {e}")
+
+        site_id = self.request.headers.get('X-Site-ID', 'unknown')
+        key = f"site:{site_id}:stats"
+        now = datetime.datetime.utcnow().isoformat()
+
+        redis_client.hincrby(key, "total", 1)  # Verhoogt het totaal aantal taken
+        redis_client.hincrby(key, "failed", 1)  # Verhoogt het aantal mislukte optimalisaties
+        redis_client.lpush(f"{key}:types", "failed")  # Voeg "failed" toe aan types
+        redis_client.lpush(f"{key}:timestamps", now)  # Voeg de timestamp toe
+        redis_client.ltrim(f"{key}:types", 0, 9)  # Beperk het aantal types tot de laatste 10
+        redis_client.ltrim(f"{key}:timestamps", 0, 9)  # Beperk het aantal timestamps tot de laatste 10
+
+        raise self.retry(exc=e, countdown=5)
 
     except subprocess.CalledProcessError as e:
         app.logger.error(f"❌ Fout bij optimalisatie: {e}")
