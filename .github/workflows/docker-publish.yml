@@ -4,35 +4,31 @@ on:
   push:
     branches: [master]
 
+permissions:              # ✅ Top-level permissions
+  contents: write
+  packages: write
+
 jobs:
   version-release-build:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-      packages: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Set up Git
-        run: |
-          git fetch --tags
+        run: git fetch --tags
 
       - name: Determine next free version
         id: version
         run: |
           git fetch --tags
-
           major=1
           minor=0
           patch=1
-
           while git rev-parse "v${major}.${minor}.${patch}" >/dev/null 2>&1; do
             patch=$((patch+1))
           done
-
           version="v${major}.${minor}.${patch}"
           echo "Next free version: $version"
           echo "version=$version" >> $GITHUB_OUTPUT
@@ -65,4 +61,3 @@ jobs:
           tags: |
             ghcr.io/twanariens/ariensdesignoptimizer:latest
             ghcr.io/twanariens/ariensdesignoptimizer:${{ steps.version.outputs.version }}
-
